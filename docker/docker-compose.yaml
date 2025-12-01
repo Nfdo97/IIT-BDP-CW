@@ -1,0 +1,242 @@
+version: "3.8"
+
+services:
+  # ============================
+  # HDFS - NameNode
+  # ============================
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    platform: linux/amd64
+    restart: always
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    ports:
+      - "9870:9870"   # NameNode Web UI
+      - "8020:8020"   # HDFS RPC
+    volumes:
+      - namenode:/hadoop/dfs/name
+    env_file:
+      - ./hadoop.env
+    networks:
+      - hadoop
+
+  # ============================
+  # HDFS - DataNode 1
+  # ============================
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    platform: linux/amd64
+    restart: always
+    depends_on:
+      - namenode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - SERVICE_PRECONDITION=namenode:9870
+    ports:
+      - "9864:9864"
+    volumes:
+      - datanode1:/hadoop/dfs/data
+    env_file:
+      - ./hadoop.env
+    networks:
+      - hadoop
+
+  # ============================
+  # HDFS - DataNode 2
+  # ============================
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    platform: linux/amd64
+    restart: always
+    depends_on:
+      - namenode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - SERVICE_PRECONDITION=namenode:9870
+    ports:
+      - "9865:9864"  # Different host port
+    volumes:
+      - datanode2:/hadoop/dfs/data
+    env_file:
+      - ./hadoop.env
+    networks:
+      - hadoop
+
+  # ============================
+  # YARN - ResourceManager
+  # ============================
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    platform: linux/amd64
+    restart: always
+    depends_on:
+      - namenode
+      - datanode1
+      - datanode2
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - SERVICE_PRECONDITION=namenode:9870 datanode1:9864 datanode2:9864
+    ports:
+      - "8088:8088"   # YARN UI
+    env_file:
+      - ./hadoop.env
+    networks:
+      - hadoop
+
+  # ============================
+  # YARN - NodeManager
+  # ============================
+  nodemanager:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    platform: linux/amd64
+    restart: always
+    depends_on:
+      - resourcemanager
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - SERVICE_PRECONDITION=resourcemanager:8088
+    env_file:
+      - ./hadoop.env
+    networks:
+      - hadoop
+
+  # ============================
+  # MapReduce Job History Server
+  # ============================
+  historyserver:
+    image: bde2020/hadoop-historyserver:2.0.0-hadoop3.2.1-java8
+    container_name: historyserver
+    platform: linux/amd64
+    restart: always
+    depends_on:
+      - namenode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    ports:
+      - "19888:19888"
+    env_file:
+      - ./hadoop.env
+    networks:
+      - hadoop
+
+  # ============================
+  # Hive Metastore DB
+  # ============================
+  hive-metastore-postgresql:
+    image: bde2020/hive-metastore-postgresql:1.0.0
+    container_name: hive-metastore-db
+    platform: linux/amd64
+    restart: always
+    networks:
+      - hadoop
+
+  # ============================
+  # Hive Metastore
+  # ============================
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-metastore
+    platform: linux/amd64
+    restart: always
+    depends_on:
+      - hive-metastore-postgresql
+      - namenode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    ports:
+      - "9083:9083"
+    networks:
+      - hadoop
+
+  # ============================
+  # HiveServer2
+  # ============================
+  hive-server:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-server
+    platform: linux/amd64
+    restart: always
+    depends_on:
+      - hive-metastore
+    environment:
+      - SERVICE_PRECONDITION=hive-metastore:9083
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    ports:
+      - "10000:10000"
+    networks:
+      - hadoop
+
+  # ============================
+  # Spark Master
+  # ============================
+  spark-master:
+    image: bde2020/spark-master
+    container_name: spark-master
+    platform: linux/amd64
+    restart: always
+    depends_on:
+      - namenode
+      - datanode1
+      - datanode2
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - INIT_DAEMON_STEP=setup_spark
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+    networks:
+      - hadoop
+
+  # ============================
+  # Spark Worker
+  # ============================
+  spark-worker:
+    image: bde2020/spark-worker
+    container_name: spark-worker-1
+    platform: linux/amd64
+    restart: always
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    ports:
+      - "8081:8081"
+    networks:
+      - hadoop
+
+  # ============================
+  # Zeppelin
+  # ============================
+  zeppelin:
+    image: apache/zeppelin:0.9.0
+    container_name: zeppelin
+    platform: linux/amd64
+    restart: always
+    depends_on:
+      - spark-master
+      - hive-server
+    ports:
+      - "8089:8080"
+    environment:
+      - ZEPPELIN_PORT=8080
+    networks:
+      - hadoop
+
+# ============================
+# Networks & Volumes
+# ============================
+networks:
+  hadoop:
+    driver: bridge
+
+volumes:
+  namenode:
+  datanode1:
+  datanode2:

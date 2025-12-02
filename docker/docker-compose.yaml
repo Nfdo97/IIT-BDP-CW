@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # ============================
   # HDFS - NameNode
@@ -126,13 +124,21 @@ services:
       - hadoop
 
   # ============================
-  # Hive Metastore DB
+  # Hive Metastore DB (use official postgres image)
   # ============================
   hive-metastore-postgresql:
-    image: bde2020/hive-metastore-postgresql:1.0.0
+    image: postgres:11
     container_name: hive-metastore-db
     platform: linux/amd64
     restart: always
+    environment:
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hive
+      POSTGRES_DB: metastore
+    volumes:
+      - hive-metastore-db:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     networks:
       - hadoop
 
@@ -149,6 +155,10 @@ services:
       - namenode
     environment:
       - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - METASTORE_DB_HOST=hive-metastore-postgresql
+      - METASTORE_DB_USER=hive
+      - METASTORE_DB_PASSWORD=hive
+      - METASTORE_DB_DBNAME=metastore
     ports:
       - "9083:9083"
     networks:
@@ -223,7 +233,7 @@ services:
       - spark-master
       - hive-server
     ports:
-      - "8089:8080"
+      - "8089:8080"   # host:container (keeps host 8089 free)
     environment:
       - ZEPPELIN_PORT=8080
     networks:
@@ -240,3 +250,4 @@ volumes:
   namenode:
   datanode1:
   datanode2:
+  hive-metastore-db:

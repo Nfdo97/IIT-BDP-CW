@@ -168,19 +168,25 @@ services:
   # HiveServer2
   # ============================
   hive-server:
-    image: bde2020/hive:2.3.2-postgresql-metastore
-    container_name: hive-server
-    platform: linux/amd64
-    restart: always
-    depends_on:
-      - hive-metastore
-    environment:
-      - SERVICE_PRECONDITION=hive-metastore:9083
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
-    ports:
-      - "10000:10000"
-    networks:
-      - hadoop
+  image: bde2020/hive:2.3.2-postgresql-metastore
+  container_name: hive-server
+  platform: linux/amd64
+  restart: always
+  depends_on:
+    - hive-metastore
+  environment:
+    - SERVICE_PRECONDITION=hive-metastore:9083
+    - HIVE_METASTORE_URI=thrift://hive-metastore:9083
+    - HIVE_METASTORE_DB_HOST=hive-metastore-postgresql
+    - HIVE_METASTORE_DB_NAME=metastore
+    - HIVE_METASTORE_DB_USER=hive
+    - HIVE_METASTORE_DB_PASSWORD=hive
+    - HIVE_WAREHOUSE_DIR=/user/hive/warehouse
+  ports:
+    - "10000:10000"
+  networks:
+    - hadoop
+
 
   # ============================
   # Spark Master
